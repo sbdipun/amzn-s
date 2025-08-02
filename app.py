@@ -166,5 +166,39 @@ def scrape_airtel():
             "details": str(e)
         }), 500
 
+# SonyLiv
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+}
+@app.route('/sonyliv')
+def scrape_sonyliv():
+    url = request.args.get('url')
+    if not url or "sonyliv.com" not in url:
+        return jsonify({"error": "Missing or invalid SonyLiv URL"}), 400
+
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        html = response.text
+
+        landscape = re.search(r'landscape_thumb\s*:\s*"(https?://[^"]+)"', html)
+        portrait = re.search(r'portrait_thumb\s*:\s*"(https?://[^"]+)"', html)
+        title = re.search(r'<h1 class="revamp-title">\s*(.*?)\s*</h1>', html)
+        year = re.search(r'<span class="revamp-metadata">\s*(\d{4})\s*</span>', html)
+
+        return jsonify({
+            "title": f"{title.group(1)} - ({year.group(1)})" if title and year else "N/A - (N/A)",
+            "year": year.group(1) if year else "N/A",
+            "landscape_image": landscape.group(1) if landscape else None,
+            "titleshot": portrait.group(1) if portrait else None
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to scrape SonyLiv",
+            "details": str(e)
+        }), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
