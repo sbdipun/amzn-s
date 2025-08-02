@@ -2,12 +2,16 @@ from flask import Flask, request, jsonify
 import requests
 import re
 import json
+from bs4 import BeautifulSoup
+from PIL import Image
+from io import BytesIO
 
 app = Flask(__name__)
 
+# ---------- Amazon Prime Route ----------
 @app.route('/')
 def home():
-    return '✅ Amazon Scraper is live! Use /scrape?url=https://...'
+    return '✅ Scraper is live! Use /scrape?url=<amazon_url> or /airtel?url=<airtel_url>'
 
 @app.route('/scrape')
 def scrape_amazon():
@@ -27,7 +31,6 @@ def scrape_amazon():
 
         landscape_image = titleshot = title = year = None
 
-        # JSON block extraction
         data_match = re.search(r'var\s+metaData\s*=\s*({.*?});', html, re.DOTALL)
         if not data_match:
             data_match = re.search(r'data:\s*({.*?})\s*,\s*onLoad', html, re.DOTALL)
@@ -42,7 +45,6 @@ def scrape_amazon():
             except Exception:
                 pass
 
-        # Fallback landscape image
         if not landscape_image:
             scripts = re.findall(r'<script[^>]*>(.*?)</script>', html, re.DOTALL)
             pattern = re.compile(r'"(https://m\.media-amazon\.com/images/S/pv-target-images/[^"]+\.jpg)"')
@@ -52,7 +54,6 @@ def scrape_amazon():
                     landscape_image = matches[0]
                     break
 
-        # Fallback title from <title>
         if not title:
             title_match = re.search(r'<title>(.*?)</title>', html)
             if title_match:
@@ -61,7 +62,6 @@ def scrape_amazon():
         if title and title.startswith("Watch ") and " | Prime Video" in title:
             title = re.sub(r"^Watch (.*?) \| Prime Video$", r"\1", title)
 
-        # Year from aria-label if missing
         if not year:
             badge_match = re.search(
                 r'<span[^>]*?aria-label="Released (\d{4})"[^>]*?data-automation-id="release-year-badge"[^>]*?>',
@@ -70,7 +70,6 @@ def scrape_amazon():
             if badge_match:
                 year = badge_match.group(1)
 
-        # Fallback titleshot
         if not titleshot:
             titleshot_match = re.search(r'"titleshot":"(https://[^"]+)"', html)
             if titleshot_match:
@@ -85,3 +84,81 @@ def scrape_amazon():
 
     except Exception as e:
         return jsonify({ "error": "Failed to scrape", "details": str(e) }), 500
+
+# ---------- Airtel Route ----------
+@app.route('/airtel')
+def scrape_airtel():
+    url = request.args.get('url')
+    if not url or "airtelxstream.in" not in url:
+        return jsonify({"error": "Missing or invalid Airtel URL"}), 400
+
+    def clean_image_url(u):
+        cleaned = re.sub(r'https://img\.airtel\.tv/unsafe/fit-in/\d+x0/filters:format\(\w+\)/', '', u)
+        return cleaned.split('?')[0]
+
+    def get_image_orientation(image_url):
+        try:
+            response = requests.get(image_url, timeout=10)
+            response.raise_for_status()
+            img = Image.open(BytesIO(response.content))
+            w, h = img.size
+            return "Portrait" if h > w else "Landscape" if w > h else "Square"
+        except:
+            return None
+
+    try:
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, 'html.parser')
+
+        landscape = portrait = title = year = None
+
+        # Landscape
+        banner = soup.find('div', class_='banner-img-wrapper desktop-img')
+        if banner:
+            img_tag = banner.find('img', class_='cdp-banner-image')
+            if img_tag:
+                landscape = clean_image_url(img_tag.get('src', ''))
+
+        # Portrait from JSON-LD
+        thumbnail_urls = []
+        for script in soup.find_all('script', type='application/ld+json'):
+            try:
+                data = json.loads(script.string)
+                if isinstance(data, dict) and data.get('@type') == 'VideoObject':
+                    thumb = data.get('thumbnailUrl')
+                    if thumb:
+                        if isinstance(thumb, list):
+                            thumbnail_urls.extend(thumb)
+                        else:
+                            thumbnail_urls.append(thumb)
+            except:
+                continue
+
+        for thumb_url in thumbnail_urls:
+            cleaned = clean_image_url(thumb_url)
+            if get_image_orientation(cleaned) == "Portrait":
+                portrait = cleaned
+                break
+
+        # Title and year
+        details = soup.find('div', class_='content-details')
+        if details:
+            t = details.find('h1', id='banner-content-title')
+            title = t.text.strip() if t else None
+            y = details.find('p', id='banner-content-release-year')
+            year = y.text.strip() if y else None
+
+        return jsonify({
+            "title": f"{title} - ({year})" if title and year else "N/A - (N/A)",
+            "year": year or "N/A",
+            "landscape_image": landscape or None,
+            "titleshot": portrait or None
+        })
+
+    except Exception as e:
+        return jsonify({ "error": "Failed to scrape Airtel", "details": str(e) }), 500
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
