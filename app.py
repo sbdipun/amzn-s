@@ -5,13 +5,15 @@ import json
 from bs4 import BeautifulSoup
 from PIL import Image
 from io import BytesIO
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 app = Flask(__name__)
 
 # ---------- Amazon Prime Route ----------
 @app.route('/')
 def home():
-    return '✅ Scraper is live! Use /scrape?url=<amazon_url> or /airtel?url=<airtel_url>'
+    return '✅ Scraper is live! Use /scrape?url=<amazon_url> or /airtel?url=<airtel_url> or /sonyliv?url=<airtel_url>'
 
 @app.route('/scrape')
 def scrape_amazon():
@@ -167,10 +169,6 @@ def scrape_airtel():
         }), 500
 
 # SonyLiv
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-}
 @app.route('/sonyliv')
 def scrape_sonyliv():
     url = request.args.get('url')
@@ -178,10 +176,32 @@ def scrape_sonyliv():
         return jsonify({"error": "Missing or invalid SonyLiv URL"}), 400
 
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
+        # Setup headers
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+            "Referer": "https://www.google.com/",
+            "DNT": "1",
+            "Upgrade-Insecure-Requests": "1"
+        }
+
+        # Retry strategy
+        session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"]
+        )
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+
+        # Make request with retry
+        response = session.get(url, headers=headers, timeout=20)
         response.raise_for_status()
         html = response.text
 
+        # Extract data using regex
         landscape = re.search(r'landscape_thumb\s*:\s*"(https?://[^"]+)"', html)
         portrait = re.search(r'portrait_thumb\s*:\s*"(https?://[^"]+)"', html)
         title = re.search(r'<h1 class="revamp-title">\s*(.*?)\s*</h1>', html)
