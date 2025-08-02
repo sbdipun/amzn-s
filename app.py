@@ -86,6 +86,10 @@ def scrape_amazon():
         return jsonify({ "error": "Failed to scrape", "details": str(e) }), 500
 
 # ---------- Airtel Route ----------
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+}
+
 @app.route('/airtel')
 def scrape_airtel():
     url = request.args.get('url')
@@ -98,7 +102,7 @@ def scrape_airtel():
 
     def get_image_orientation(image_url):
         try:
-            response = requests.get(image_url, timeout=10)
+            response = requests.get(image_url, headers=HEADERS, timeout=10)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
             w, h = img.size
@@ -107,13 +111,13 @@ def scrape_airtel():
             return None
 
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, headers=HEADERS, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, 'html.parser')
 
         landscape = portrait = title = year = None
 
-        # Landscape
+        # Landscape image
         banner = soup.find('div', class_='banner-img-wrapper desktop-img')
         if banner:
             img_tag = banner.find('img', class_='cdp-banner-image')
@@ -157,8 +161,10 @@ def scrape_airtel():
         })
 
     except Exception as e:
-        return jsonify({ "error": "Failed to scrape Airtel", "details": str(e) }), 500
-
+        return jsonify({
+            "error": "Failed to scrape Airtel",
+            "details": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
