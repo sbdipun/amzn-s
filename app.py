@@ -219,6 +219,68 @@ def scrape_sonyliv():
             "error": "Failed to scrape SonyLiv",
             "details": str(e)
         }), 500
+        
+# Crunchyroll
+@app.route('/crunchyroll')
+def scrape_crunchyroll():
+    url = request.args.get('url')
+    if not url or "crunchyroll.com" not in url:
+        return jsonify({"error": "Missing or invalid Crunchyroll URL"}), 400
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+        "Referer": "https://www.google.com/",
+        "DNT": "1",
+        "Upgrade-Insecure-Requests": "1"
+    }
+
+    def extract_filename(img_url):
+        parsed_url = urlparse(img_url)
+        return parsed_url.path.split("/")[-1]
+
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Title
+        page_title = soup.title.string.strip() if soup.title else "No Title Found"
+        if page_title.startswith("Watch "):
+            page_title = page_title[len("Watch "):]
+        if " - Crunchyroll" in page_title:
+            page_title = page_title.replace(" - Crunchyroll", "")
+
+        # Image base paths
+        portrait_base = "https://www.crunchyroll.com/imgsrv/display/thumbnail/480x720/catalog/crunchyroll/"
+        landscape_base = "https://www.crunchyroll.com/imgsrv/display/thumbnail/1200x675/catalog/crunchyroll/"
+
+        portrait_urls = set()
+        landscape_urls = set()
+
+        for img in soup.find_all('img'):
+            img_src = img.get('src')
+            if not img_src or 'blur' in img_src:
+                continue
+            if 'width=480' in img_src:
+                filename = extract_filename(img_src)
+                portrait_urls.add(portrait_base + filename)
+            elif 'width=1200' in img_src:
+                filename = extract_filename(img_src)
+                landscape_urls.add(landscape_base + filename)
+
+        return jsonify({
+            "title": page_title,
+            "landscape_image": list(landscape_urls)[0] if landscape_urls else None,
+            "titleshot": list(portrait_urls)[0] if portrait_urls else None
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to scrape Crunchyroll",
+            "details": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
