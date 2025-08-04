@@ -169,97 +169,86 @@ def scrape_airtel():
         }), 500
 
 
-# Surfshark proxy configuration
-PROXIES = {
+PROXY = {
     "https": "https://x6DzSR6XnGeLnBLk32UPvjWg:CFcqTXQDxKybUf6qAHTmSxpW@in-mum.prod.surfshark.com:443"
 }
 
+BASE_IMAGE_URL = "https://qqcdnpictest.mxplay.com/"
 
-@app.route('/mxplayer')
-def scrape_mxplayer():
-    url = request.args.get('url')
-    if not url or "mxplayer.in" not in url:
-        return jsonify({"error": "Missing or invalid MX Player URL"}), 400
+@app.route('/mxplayer', methods=['GET'])
+def mxplayer():
+    target_url = request.args.get('url')
+    if not target_url:
+        return jsonify({"error": "Missing `url` query parameter"}), 400
 
     try:
-        response = requests.get(url, headers=HEADERS, proxies=PROXIES, timeout=10)
+        response = requests.get(target_url, proxies=PROXY, timeout=10)
         response.raise_for_status()
-        html = response.text
+        html_content = response.text
 
-        soup = BeautifulSoup(html, 'html.parser')
+        mxs_start_marker = 'window.__mxs__ = '
+        start_index = html_content.find(mxs_start_marker)
 
-        # --- Try JSON-LD ---
-        title = "Title not found"
-        release_year = "N/A"
-        landscape = None
+        if start_index == -1:
+            return jsonify({"error": "window.__mxs__ object not found"})
 
-        ld_json_script = soup.find('script', type='application/ld+json')
-        if ld_json_script:
-            try:
-                ld_data = json.loads(ld_json_script.string)
+        json_start_index = html_content.find('{', start_index + len(mxs_start_marker))
+        if json_start_index == -1:
+            return jsonify({"error": "Opening brace not found after mxs marker"})
 
-                if isinstance(ld_data, list):
-                    for item in ld_data:
-                        if isinstance(item, dict):
-                            title = item.get("name", title)
-                            release_event = item.get("releasedEvent", {})
-                            release_year = release_event.get("startDate", "N/A").split("-")[0]
-                            image_data = item.get("image")
-                            if isinstance(image_data, str):
-                                landscape = image_data.replace("640x360", "3840x2160")
-                elif isinstance(ld_data, dict):
-                    title = ld_data.get("name", title)
-                    release_event = ld_data.get("releasedEvent", {})
-                    release_year = release_event.get("startDate", "N/A").split("-")[0]
-                    image_data = ld_data.get("image")
-                    if isinstance(image_data, str):
-                        landscape = image_data.replace("640x360", "3840x2160")
-            except:
-                pass
-
-        # --- Fallback title ---
-        if title == "Title not found" or not title:
-            if soup.title:
-                title_tag = soup.title.string.strip()
-                title = title_tag.split(" - MX Player")[0] if "MX Player" in title_tag else title_tag
-
-        # --- Try window.mxs data for portrait ---
-        portrait = None
-        window_mxs_data = None
-        for script in soup.find_all("script"):
-            if script.string and "window.mxs" in script.string:
-                script_content = script.string.strip()
-                json_start = script_content.find("{")
-                json_end = script_content.rfind("}")
-                if json_start != -1 and json_end != -1:
-                    try:
-                        window_mxs_data = json.loads(script_content[json_start:json_end + 1])
-                    except:
-                        pass
+        # Find matching closing brace
+        brace_count = 0
+        end_index = -1
+        for i in range(json_start_index, len(html_content)):
+            if html_content[i] == '{':
+                brace_count += 1
+            elif html_content[i] == '}':
+                brace_count -= 1
+            if brace_count == 0:
+                end_index = i
                 break
 
-        if window_mxs_data and "entities" in window_mxs_data:
-            for entity_info in window_mxs_data["entities"].values():
-                images = entity_info.get("imageInfo", [])
-                if not images:
-                    continue
-                portrait_image = next((img for img in images if img.get("type") == "portrait_large"), images[0])
-                portrait_url = portrait_image.get("url", "")
-                portrait = f"https://qqcdnpictest.mxplay.com/{portrait_url.replace('320x480', '480x720')}"
-                break
+        if end_index == -1:
+            return jsonify({"error": "Could not find end of JSON block"})
+
+        mxs_json_str = html_content[json_start_index : end_index + 1]
+        mxs_data = json.loads(mxs_json_str)
+
+        # Try to extract movie ID from the URL
+        match = re.search(r'watch-.*?-([a-f0-9]{32})', target_url)
+        if not match:
+            return jsonify({"error": "Could not extract movie ID from URL"})
+        movie_id = match.group(1)
+
+        entities_data = mxs_data.get("entities", {})
+        movie_info = entities_data.get(movie_id)
+        if not movie_info:
+            return jsonify({"error": f"Movie ID '{movie_id}' not found in data"})
+
+        title = movie_info.get("title")
+        release_date = movie_info.get("releaseDate")
+        year = release_date.split('-')[0] if release_date else "Unknown"
+
+        images = []
+        for img in movie_info.get("imageInfo", []):
+            original_url = img.get("url")
+            if img.get("type") == "landscape":
+                img_url = BASE_IMAGE_URL + original_url.replace("320x180", "3840x2160")
+                images.append({"type": "landscape", "url": img_url})
+            elif img.get("type") == "portrait_large":
+                img_url = BASE_IMAGE_URL + original_url.replace("320x480", "640x960")
+                images.append({"type": "portrait_large", "url": img_url})
 
         return jsonify({
-            "title": f"{title} - ({release_year})" if title and release_year else "N/A - (N/A)",
-            "year": release_year or "N/A",
-            "landscape_image": landscape or None,
-            "titleshot": portrait or None
+            "title": title,
+            "year": year,
+            "images": images
         })
 
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to scrape MX Player",
-            "details": str(e)
-        }), 500
+    except requests.RequestException as e:
+        return jsonify({"error": "Failed to fetch page", "details": str(e)}), 500
+    except json.JSONDecodeError as e:
+        return jsonify({"error": "Failed to parse JSON", "details": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
