@@ -168,119 +168,95 @@ def scrape_airtel():
             "details": str(e)
         }), 500
 
-# SonyLiv
-@app.route('/sonyliv')
-def scrape_sonyliv():
+@app.route('/mxplayer')
+def scrape_mxplayer():
     url = request.args.get('url')
-    if not url or "sonyliv.com" not in url:
-        return jsonify({"error": "Missing or invalid SonyLiv URL"}), 400
+    if not url or "mxplayer.in" not in url:
+        return jsonify({"error": "Missing or invalid MX Player URL"}), 400
 
     try:
-        # Setup headers
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-            "Referer": "https://www.google.com/",
-            "DNT": "1",
-            "Upgrade-Insecure-Requests": "1"
-        }
-
-        # Retry strategy
-        session = requests.Session()
-        retries = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET"]
-        )
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-
-        # Make request with retry
-        response = session.get(url, headers=headers, timeout=20)
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         html = response.text
 
-        # Extract data using regex
-        landscape = re.search(r'landscape_thumb\s*:\s*"(https?://[^"]+)"', html)
-        portrait = re.search(r'portrait_thumb\s*:\s*"(https?://[^"]+)"', html)
-        title = re.search(r'<h1 class="revamp-title">\s*(.*?)\s*</h1>', html)
-        year = re.search(r'<span class="revamp-metadata">\s*(\d{4})\s*</span>', html)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # --- Try JSON-LD ---
+        title = "Title not found"
+        release_year = "N/A"
+        landscape = None
+
+        ld_json_script = soup.find('script', type='application/ld+json')
+        if ld_json_script:
+            try:
+                ld_data = json.loads(ld_json_script.string)
+
+                if isinstance(ld_data, list):
+                    for item in ld_data:
+                        if isinstance(item, dict):
+                            title = item.get("name", title)
+                            release_event = item.get("releasedEvent", {})
+                            release_year = release_event.get("startDate", "N/A").split("-")[0]
+                            image_data = item.get("image")
+                            if isinstance(image_data, str):
+                                landscape = image_data.replace("640x360", "3840x2160")
+                elif isinstance(ld_data, dict):
+                    title = ld_data.get("name", title)
+                    release_event = ld_data.get("releasedEvent", {})
+                    release_year = release_event.get("startDate", "N/A").split("-")[0]
+                    image_data = ld_data.get("image")
+                    if isinstance(image_data, str):
+                        landscape = image_data.replace("640x360", "3840x2160")
+            except:
+                pass
+
+        # --- Fallback title from <title> tag ---
+        if title == "Title not found" or not title:
+            if soup.title:
+                title_tag = soup.title.string.strip()
+                title = title_tag.split(" - MX Player")[0] if "MX Player" in title_tag else title_tag
+
+        # --- Try to get portrait image from window.mxs ---
+        portrait = None
+        window_mxs_data = None
+        for script in soup.find_all("script"):
+            if script.string and "window.mxs" in script.string:
+                script_content = script.string.strip()
+                json_start = script_content.find("{")
+                json_end = script_content.rfind("}")
+                if json_start != -1 and json_end != -1:
+                    try:
+                        window_mxs_data = json.loads(script_content[json_start:json_end + 1])
+                    except:
+                        pass
+                break
+
+        if window_mxs_data and "entities" in window_mxs_data:
+            for entity_info in window_mxs_data["entities"].values():
+                images = entity_info.get("imageInfo", [])
+                if not images:
+                    continue
+                portrait_image = next((img for img in images if img.get("type") == "portrait_large"), images[0])
+                portrait_url = portrait_image.get("url", "")
+                portrait = f"https://qqcdnpictest.mxplay.com/{portrait_url.replace('320x480', '480x720')}"
+                break
 
         return jsonify({
-            "title": f"{title.group(1)} - ({year.group(1)})" if title and year else "N/A - (N/A)",
-            "year": year.group(1) if year else "N/A",
-            "landscape_image": landscape.group(1) if landscape else None,
-            "titleshot": portrait.group(1) if portrait else None
+            "title": f"{title} - ({release_year})" if title and release_year else "N/A - (N/A)",
+            "year": release_year or "N/A",
+            "landscape_image": landscape or None,
+            "titleshot": portrait or None
         })
 
     except Exception as e:
         return jsonify({
-            "error": "Failed to scrape SonyLiv",
+            "error": "Failed to scrape MX Player",
             "details": str(e)
         }), 500
-        
-# Crunchyroll
-@app.route('/crunchyroll')
-def scrape_crunchyroll():
-    url = request.args.get('url')
-    if not url or "crunchyroll.com" not in url:
-        return jsonify({"error": "Missing or invalid Crunchyroll URL"}), 400
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-        "Referer": "https://www.google.com/",
-        "DNT": "1",
-        "Upgrade-Insecure-Requests": "1"
-    }
 
-    def extract_filename(img_url):
-        parsed_url = urlparse(img_url)
-        return parsed_url.path.split("/")[-1]
 
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Title
-        page_title = soup.title.string.strip() if soup.title else "No Title Found"
-        if page_title.startswith("Watch "):
-            page_title = page_title[len("Watch "):]
-        if " - Crunchyroll" in page_title:
-            page_title = page_title.replace(" - Crunchyroll", "")
-
-        # Image base paths
-        portrait_base = "https://www.crunchyroll.com/imgsrv/display/thumbnail/480x720/catalog/crunchyroll/"
-        landscape_base = "https://www.crunchyroll.com/imgsrv/display/thumbnail/1200x675/catalog/crunchyroll/"
-
-        portrait_urls = set()
-        landscape_urls = set()
-
-        for img in soup.find_all('img'):
-            img_src = img.get('src')
-            if not img_src or 'blur' in img_src:
-                continue
-            if 'width=480' in img_src:
-                filename = extract_filename(img_src)
-                portrait_urls.add(portrait_base + filename)
-            elif 'width=1200' in img_src:
-                filename = extract_filename(img_src)
-                landscape_urls.add(landscape_base + filename)
-
-        return jsonify({
-            "title": page_title,
-            "landscape_image": list(landscape_urls)[0] if landscape_urls else None,
-            "titleshot": list(portrait_urls)[0] if portrait_urls else None
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to scrape Crunchyroll",
-            "details": str(e)
-        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
