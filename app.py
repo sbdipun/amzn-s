@@ -30,9 +30,13 @@ def scrape_amazon():
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-site",
     }
+    
+    PROXY = {
+    "https": "https://x6DzSR6XnGeLnBLk32UPvjWg:CFcqTXQDxKybUf6qAHTmSxpW@in-mum.prod.surfshark.com:443"
+    }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, proxies=PROXY, timeout=10)
         html = response.text if response.status_code == 200 else ""
 
         landscape_image = titleshot = title = year = None
