@@ -25,10 +25,10 @@ def scrape_amazon():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.amazon.com/",
-        "sec-ch-ua-platform': '"Windows",
-        "sec-fetch-dest': 'empty",
-        "sec-fetch-mode': 'cors",
-        "sec-fetch-site': 'same-site",
+        "sec-ch-ua-platform": "Windows",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
     }
 
     try:
