@@ -258,5 +258,67 @@ def mxplayer():
     except json.JSONDecodeError as e:
         return jsonify({"error": "Failed to parse JSON", "details": str(e)}), 500
 
+@app.route('/zee5')
+def scrape_zee5():
+
+    input_text = request.args.get('id') or request.args.get('url')
+    if not input_text:
+        return jsonify({"error": "Missing 'url' or 'id' parameter"}), 400
+
+    def is_url(text):
+        return bool(re.search(r"https?://", text))
+
+    def extract_zee5_id(url):
+        pattern = r"zee5\.com\/(?:movies|web-series|tv-shows)\/details\/[^\/]+\/([0-9a-z-]+)"
+        match = re.search(pattern, url, re.IGNORECASE)
+        return match.group(1) if match else None
+
+    def get_content_type(text):
+        if "/movies/" in text:
+            return "movie"
+        elif "/web-series/" in text or "/tv-shows/" in text:
+            return "tvshow"
+        else:
+            return "tvshow"
+
+    if is_url(input_text):
+        content_id = extract_zee5_id(input_text)
+        content_type = get_content_type(input_text)
+    else:
+        content_id = input_text
+        content_type = get_content_type(input_text)
+
+    if not content_id:
+        return jsonify({"error": "Invalid ZEE5 URL or ID"}), 400
+
+    url = f"https://gwapi.zee5.com/content/tvshow/{content_id}?translation=en&country=IN"
+    headers = {
+        'x-access-token': 'YOUR_ACCESS_TOKEN',
+        'origin': 'https://www.zee5.com',
+        'referer': 'https://www.zee5.com/',
+        'user-agent': 'Mozilla/5.0 ...'
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        release_date = data.get("release_date", "")
+        year = release_date.split("-")[0] if release_date else "N/A"
+        image = data.get("image", {})
+        image_cover = image.get("cover")
+        image_list = image.get("list")
+        base_url = "https://akamaividz.zee5.com/image/upload/resources/"
+        portrait = f"{base_url}{content_id}/portrait/{image_cover}.jpg" if image_cover else None
+        landscape = f"{base_url}{content_id}/list/{image_list}.jpg" if image_list else None
+        return jsonify({
+            "title": f"{data.get('title', 'N/A')} - ({year})",
+            "year": year,
+            "landscape_image": landscape,
+            "portrait_image": portrait
+        })
+    except Exception as e:
+        return jsonify({"error": "Failed to fetch ZEE5 data", "details": str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
