@@ -285,9 +285,9 @@ def scrape_zee5():
     if not content_id:
         return jsonify({"error": "Invalid ZEE5 URL or ID"}), 400
 
-    url = f"https://gwapi.zee5.com/content/details/{content_id}?translation=en&country=IN"
+    url = f"https://gwapi.zee5.com/content/details/{content_id}?translation=en&country=US"
     headers = {
-        'x-access-token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF0Zm9ybV9jb2RlIjoiV2ViQCQhdDM4NzEyIiwiaXNzdWVkQXQiOiIyMDI1LTA4LTAzVDIzOjQ3OjIwLjIzMFoiLCJwcm9kdWN0X2NvZGUiOiJ6ZWU1QDk3NSIsInR0bCI6ODY0MDAwMDAsImlhdCI6MTc1NDI2NDg0MH0.W8AdQdr8Q_lgmvAAkOyNy_E_xpgPbyujAefSu6qQ94M',
+        'x-access-token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF0Zm9ybV9jb2RlIjoiV2ViQCQhdDM4NzEyIiwiaXNzdWVkQXQiOiIyMDI1LTA4LTA3VDA3OjQ3OjIxLjU2N1oiLCJwcm9kdWN0X2NvZGUiOiJ6ZWU1QDk3NSIsInR0bCI6ODY0MDAwMDAsImlhdCI6MTc1NDU1Mjg0MX0.X2abRQ_3N5U_Wu2jw4KFy7C2gPGcfr8UOHvTJJ6ydyA',
         'origin': 'https://www.zee5.com',
         'referer': 'https://www.zee5.com/',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
