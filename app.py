@@ -260,6 +260,9 @@ def mxplayer():
 
 @app.route('/zee5')
 def scrape_zee5():
+    import re
+    import requests
+    from flask import request, jsonify
 
     input_text = request.args.get('id') or request.args.get('url')
     if not input_text:
@@ -273,27 +276,18 @@ def scrape_zee5():
         match = re.search(pattern, url, re.IGNORECASE)
         return match.group(1) if match else None
 
-    def get_content_type(text):
-        if "/movies/" in text:
-            return "movie"
-        elif "/web-series/" in text or "/tv-shows/" in text:
-            return "tvshow"
-        else:
-            return "tvshow"
-
+    # Extract content ID either from URL or use input directly as ID
     if is_url(input_text):
         content_id = extract_zee5_id(input_text)
-        content_type = get_content_type(input_text)
     else:
         content_id = input_text
-        content_type = get_content_type(input_text)
 
     if not content_id:
         return jsonify({"error": "Invalid ZEE5 URL or ID"}), 400
 
     url = f"https://gwapi.zee5.com/content/details/{content_id}?translation=en&country=IN"
     headers = {
-        'x-access-token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF0Zm9ybV9jb2RlIjoiV2ViQCQhdDM4NzEyIiwiaXNzdWVkQXQiOiIyMDI1LTA4LTA3VDA3OjQ3OjIxLjU2N1oiLCJwcm9kdWN0X2NvZGUiOiJ6ZWU1QDk3NSIsInR0bCI6ODY0MDAwMDAsImlhdCI6MTc1NDU1Mjg0MX0.X2abRQ_3N5U_Wu2jw4KFy7C2gPGcfr8UOHvTJJ6ydyA',
+        'x-access-token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF0Zm9ybV9jb2RlIjoiV2ViQCQhdDM4NzEyIiwiaXNzdWVkQXQiOiIyMDI1LTA4LTAzVDIzOjQ3OjIwLjIzMFoiLCJwcm9kdWN0X2NvZGUiOiJ6ZWU1QDk3NSIsInR0bCI6ODY0MDAwMDAsImlhdCI6MTc1NDI2NDg0MH0.W8AdQdr8Q_lgmvAAkOyNy_E_xpgPbyujAefSu6qQ94M',
         'origin': 'https://www.zee5.com',
         'referer': 'https://www.zee5.com/',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
@@ -302,6 +296,9 @@ def scrape_zee5():
         resp = requests.get(url, headers=headers, timeout=10)
         resp.raise_for_status()
         data = resp.json()
+        if not data:
+            return jsonify({"error": "No data found for ID"}), 404
+
         release_date = data.get("release_date", "")
         year = release_date.split("-")[0] if release_date else "N/A"
         image = data.get("image", {})
@@ -310,12 +307,13 @@ def scrape_zee5():
         base_url = "https://akamaividz.zee5.com/image/upload/resources/"
         portrait = f"{base_url}{content_id}/portrait/{image_cover}.jpg" if image_cover else None
         landscape = f"{base_url}{content_id}/list/{image_list}.jpg" if image_list else None
-        return jsonify({
-            "title": f"{data.get('title', 'N/A')} - ({year})",
+        result = {
+            "title": f"{data.get('title', 'N/A')} - ({year})" if data.get('title') and year else "N/A - (N/A)",
             "year": year,
             "landscape_image": landscape,
             "portrait_image": portrait
-        })
+        }
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": "Failed to fetch ZEE5 data", "details": str(e)}), 500
 
