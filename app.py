@@ -99,7 +99,9 @@ def scrape_amazon():
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 }
-
+PROXY = {
+    "https": "https://x6DzSR6XnGeLnBLk32UPvjWg:CFcqTXQDxKybUf6qAHTmSxpW@in-mum.prod.surfshark.com:443"
+    }
 @app.route('/airtel')
 def scrape_airtel():
     url = request.args.get('url')
@@ -112,7 +114,7 @@ def scrape_airtel():
 
     def get_image_orientation(image_url):
         try:
-            response = requests.get(image_url, headers=HEADERS, timeout=10)
+            response = requests.get(image_url, headers=HEADERS, proxies=PROXY, timeout=10)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
             w, h = img.size
@@ -121,7 +123,7 @@ def scrape_airtel():
             return None
 
     try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
+        r = requests.get(url, headers=HEADERS, proxies=PROXY, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, 'html.parser')
 
